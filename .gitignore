@@ -1,0 +1,8 @@
+*.png
+*.md
+!README.md
+*.pyc
+.env
+*.ppt
+*.pptx
+generate-example.py
