@@ -285,6 +285,6 @@ class AIService:
         Returns:
             PIL Image object or None if failed
         """
-        edit_prompt = f"根据以下指令修改这张PPT页面：{prompt}\n保持原有的内容结构和设计风格，只按照指令进行修改。"
-        return self.generate_image(edit_prompt, current_image_path, aspect_ratio, resolution)
+        edit_instruction = f"根据以下指令修改这张PPT页面：{prompt}\n保持原有的内容结构和设计风格，只按照指令进行修改。"
+        return self.generate_image(edit_instruction, current_image_path, aspect_ratio, resolution)
 

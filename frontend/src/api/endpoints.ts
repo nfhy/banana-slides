@@ -151,7 +151,7 @@ export const editPageImage = async (
 ): Promise<ApiResponse> => {
   const response = await apiClient.post<ApiResponse>(
     `/api/projects/${projectId}/pages/${pageId}/edit/image`,
-    { edit_prompt: editPrompt }
+    { edit_instruction: editPrompt }
   );
   return response.data;
 };
