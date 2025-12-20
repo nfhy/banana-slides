@@ -244,6 +244,10 @@ jobs:
     needs: docker-test
     # Note: Full E2E tests use Gemini format only
     # OpenAI format compatibility is verified in backend-integration-test (equivalent substitution principle)
+    env:
+      # Set environment variable from secret for use in if conditions
+      # (secrets cannot be used directly in if conditions)
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
     
     steps:
       - name: Checkout code
@@ -318,7 +322,7 @@ jobs:
         continue-on-error: false
       
       - name: Run full flow E2E tests (requires real API)
-        if: ${{ secrets.GOOGLE_API_KEY != '' }}
+        if: env.GOOGLE_API_KEY != ''
         run: |
           # Run full flow tests (from creation to PPT export)
           # Using Gemini format for full flow testing
@@ -330,7 +334,7 @@ jobs:
         continue-on-error: false
       
       - name: Skip full flow test
-        if: ${{ secrets.GOOGLE_API_KEY == '' }}
+        if: env.GOOGLE_API_KEY == ''
         run: |
           echo "Skipping full flow E2E test"
           echo "Reason: GOOGLE_API_KEY not configured"
