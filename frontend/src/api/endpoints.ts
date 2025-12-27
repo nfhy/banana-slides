@@ -21,6 +21,7 @@ export const createProject = async (data: CreateProjectRequest): Promise<ApiResp
     idea_prompt: data.idea_prompt,
     outline_text: data.outline_text,
     description_text: data.description_text,
+    template_style: data.template_style,
   });
   return response.data;
 };

@@ -165,6 +165,7 @@ def create_project():
             idea_prompt=data.get('idea_prompt'),
             outline_text=data.get('outline_text'),
             description_text=data.get('description_text'),
+            template_style=data.get('template_style'),
             status='DRAFT'
         )
         
@@ -234,6 +235,10 @@ def update_project(project_id):
         # Update extra_requirements if provided
         if 'extra_requirements' in data:
             project.extra_requirements = data['extra_requirements']
+        
+        # Update template_style if provided
+        if 'template_style' in data:
+            project.template_style = data['template_style']
         
         # Update page order if provided
         if 'pages_order' in data:
@@ -655,6 +660,12 @@ def generate_images(project_id):
         from services import FileService
         file_service = FileService(current_app.config['UPLOAD_FOLDER'])
         
+        # 合并额外要求和风格描述
+        combined_requirements = project.extra_requirements or ""
+        if project.template_style:
+            style_requirement = f"\n\nppt页面风格描述：\n\n{project.template_style}"
+            combined_requirements = combined_requirements + style_requirement
+        
         # Get app instance for background task
         app = current_app._get_current_object()
         
@@ -671,7 +682,7 @@ def generate_images(project_id):
             current_app.config['DEFAULT_ASPECT_RATIO'],
             current_app.config['DEFAULT_RESOLUTION'],
             app,
-            project.extra_requirements,
+            combined_requirements if combined_requirements.strip() else None,
             language
         )
         

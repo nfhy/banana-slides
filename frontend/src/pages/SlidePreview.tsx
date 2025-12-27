@@ -15,8 +15,9 @@ import {
   Upload,
   Image as ImageIcon,
   ImagePlus,
+  Settings,
 } from 'lucide-react';
-import { Button, Loading, Modal, Textarea, useToast, useConfirm, MaterialSelector, Markdown } from '@/components/shared';
+import { Button, Loading, Modal, Textarea, useToast, useConfirm, MaterialSelector, Markdown, ProjectSettingsModal } from '@/components/shared';
 import { MaterialGeneratorModal } from '@/components/shared/MaterialGeneratorModal';
 import { TemplateSelector, getTemplateFile } from '@/components/shared/TemplateSelector';
 import { listUserTemplates, type UserTemplate } from '@/api/endpoints';
@@ -75,7 +76,12 @@ export const SlidePreview: React.FC = () => {
   const [isSavingRequirements, setIsSavingRequirements] = useState(false);
   const [isExtraRequirementsExpanded, setIsExtraRequirementsExpanded] = useState(false);
   const isEditingRequirements = useRef(false); // 跟踪用户是否正在编辑额外要求
+  const [templateStyle, setTemplateStyle] = useState<string>('');
+  const [isSavingTemplateStyle, setIsSavingTemplateStyle] = useState(false);
+  const [isTemplateStyleExpanded, setIsTemplateStyleExpanded] = useState(false);
+  const isEditingTemplateStyle = useRef(false); // 跟踪用户是否正在编辑风格描述
   const lastProjectId = useRef<string | null>(null); // 跟踪上一次的项目ID
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
   // 素材生成模态开关（模块本身可复用，这里只是示例入口）
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
   // 素材选择器模态开关
@@ -121,7 +127,7 @@ export const SlidePreview: React.FC = () => {
     loadTemplates();
   }, [projectId, currentProject, syncProject]);
 
-  // 当项目加载后，初始化额外要求
+  // 当项目加载后，初始化额外要求和风格描述
   // 只在项目首次加载或项目ID变化时初始化，避免覆盖用户正在输入的内容
   useEffect(() => {
     if (currentProject) {
@@ -129,17 +135,24 @@ export const SlidePreview: React.FC = () => {
       const isNewProject = lastProjectId.current !== currentProject.id;
       
       if (isNewProject) {
-        // 新项目，初始化额外要求
+        // 新项目，初始化额外要求和风格描述
         setExtraRequirements(currentProject.extra_requirements || '');
+        setTemplateStyle(currentProject.template_style || '');
         lastProjectId.current = currentProject.id || null;
         isEditingRequirements.current = false;
-      } else if (!isEditingRequirements.current) {
+        isEditingTemplateStyle.current = false;
+      } else {
         // 同一项目且用户未在编辑，可以更新（比如从服务器保存后同步回来）
-        setExtraRequirements(currentProject.extra_requirements || '');
+        if (!isEditingRequirements.current) {
+          setExtraRequirements(currentProject.extra_requirements || '');
+        }
+        if (!isEditingTemplateStyle.current) {
+          setTemplateStyle(currentProject.template_style || '');
+        }
       }
-      // 如果用户正在编辑（isEditingRequirements.current === true），则不更新本地状态
+      // 如果用户正在编辑，则不更新本地状态
     }
-  }, [currentProject?.id, currentProject?.extra_requirements]);
+  }, [currentProject?.id, currentProject?.extra_requirements, currentProject?.template_style]);
 
   // 加载当前页面的历史版本
   useEffect(() => {
@@ -572,6 +585,27 @@ export const SlidePreview: React.FC = () => {
     }
   }, [currentProject, projectId, extraRequirements, syncProject, show]);
 
+  const handleSaveTemplateStyle = useCallback(async () => {
+    if (!currentProject || !projectId) return;
+    
+    setIsSavingTemplateStyle(true);
+    try {
+      await updateProject(projectId, { template_style: templateStyle || '' });
+      // 保存成功后，标记为不在编辑状态，允许同步更新
+      isEditingTemplateStyle.current = false;
+      // 更新本地项目状态
+      await syncProject(projectId);
+      show({ message: '风格描述已保存', type: 'success' });
+    } catch (error: any) {
+      show({ 
+        message: `保存失败: ${error.message || '未知错误'}`, 
+        type: 'error' 
+      });
+    } finally {
+      setIsSavingTemplateStyle(false);
+    }
+  }, [currentProject, projectId, templateStyle, syncProject, show]);
+
   const handleTemplateSelect = async (templateFile: File | null, templateId?: string) => {
     if (!projectId) return;
     
@@ -681,6 +715,15 @@ export const SlidePreview: React.FC = () => {
           <Button
             variant="ghost"
             size="sm"
+            icon={<Settings size={16} className="md:w-[18px] md:h-[18px]" />}
+            onClick={() => setIsProjectSettingsOpen(true)}
+            className="hidden lg:inline-flex"
+          >
+            <span className="hidden xl:inline">项目设置</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             icon={<Upload size={16} className="md:w-[18px] md:h-[18px]" />}
             onClick={() => setIsTemplateModalOpen(true)}
             className="hidden lg:inline-flex"
@@ -766,46 +809,6 @@ export const SlidePreview: React.FC = () => {
             >
               批量生成图片 ({currentProject.pages.length})
             </Button>
-            
-            {/* 额外要求 */}
-            <div className="border-t border-gray-200 pt-2 md:pt-3">
-              <button
-                onClick={() => setIsExtraRequirementsExpanded(!isExtraRequirementsExpanded)}
-                className="w-full flex items-center justify-between text-xs md:text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
-              >
-                <span>额外要求</span>
-                {isExtraRequirementsExpanded ? (
-                  <ChevronUp size={14} className="md:w-4 md:h-4" />
-                ) : (
-                  <ChevronDown size={14} className="md:w-4 md:h-4" />
-                )}
-              </button>
-              
-              {isExtraRequirementsExpanded && (
-                <div className="mt-2 md:mt-3 space-y-2">
-                  <Textarea
-                    value={extraRequirements}
-                    onChange={(e) => {
-                      // 标记用户正在编辑，防止同步时覆盖
-                      isEditingRequirements.current = true;
-                      setExtraRequirements(e.target.value);
-                    }}
-                    placeholder="例如：使用紧凑的布局，顶部展示一级大纲标题，加入更丰富的PPT插图..."
-                    rows={2}
-                    className="text-xs md:text-sm"
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleSaveExtraRequirements}
-                    disabled={isSavingRequirements}
-                    className="w-full text-xs md:text-sm"
-                  >
-                    {isSavingRequirements ? '保存中...' : '保存'}
-                  </Button>
-                </div>
-              )}
-            </div>
           </div>
           
           {/* 缩略图列表：桌面端垂直，移动端横向滚动 */}
@@ -1378,6 +1381,25 @@ export const SlidePreview: React.FC = () => {
             onClose={() => setIsMaterialSelectorOpen(false)}
             onSelect={handleSelectMaterials}
             multiple={true}
+          />
+          {/* 项目设置模态框 */}
+          <ProjectSettingsModal
+            isOpen={isProjectSettingsOpen}
+            onClose={() => setIsProjectSettingsOpen(false)}
+            extraRequirements={extraRequirements}
+            templateStyle={templateStyle}
+            onExtraRequirementsChange={(value) => {
+              isEditingRequirements.current = true;
+              setExtraRequirements(value);
+            }}
+            onTemplateStyleChange={(value) => {
+              isEditingTemplateStyle.current = true;
+              setTemplateStyle(value);
+            }}
+            onSaveExtraRequirements={handleSaveExtraRequirements}
+            onSaveTemplateStyle={handleSaveTemplateStyle}
+            isSavingRequirements={isSavingRequirements}
+            isSavingTemplateStyle={isSavingTemplateStyle}
           />
         </>
       )}

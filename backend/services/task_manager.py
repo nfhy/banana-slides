@@ -368,8 +368,8 @@ def generate_images_task(task_id: str, project_id: str, ai_service, file_service
                         page_ref_image_path = None
                         if use_template:
                             page_ref_image_path = file_service.get_template_path(project_id)
-                            if not page_ref_image_path:
-                                raise ValueError("No template image found for project")
+                            # 注意：如果有风格描述，即使没有模板图片也允许生成
+                            # 这个检查已经在 controller 层完成，这里不再检查
                         
                         # Generate image prompt
                         prompt = ai_service.generate_image_prompt(
@@ -527,8 +527,8 @@ def generate_single_page_image_task(task_id: str, project_id: str, page_id: str,
             ref_image_path = None
             if use_template:
                 ref_image_path = file_service.get_template_path(project_id)
-                if not ref_image_path:
-                    raise ValueError("No template image found for project")
+                # 注意：如果有风格描述，即使没有模板图片也允许生成
+                # 这个检查已经在 controller 层完成，这里不再检查
             
             # Generate image prompt
             page_data = page.get_outline_content() or {}

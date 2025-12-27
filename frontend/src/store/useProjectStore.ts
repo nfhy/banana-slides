@@ -21,7 +21,7 @@ interface ProjectState {
   setError: (error: string | null) => void;
   
   // 项目操作
-  initializeProject: (type: 'idea' | 'outline' | 'description', content: string, templateImage?: File) => Promise<void>;
+  initializeProject: (type: 'idea' | 'outline' | 'description', content: string, templateImage?: File, templateStyle?: string) => Promise<void>;
   syncProject: (projectId?: string) => Promise<void>;
   
   // 页面操作
@@ -102,7 +102,7 @@ const debouncedUpdatePage = debounce(
   setError: (error) => set({ error }),
 
   // 初始化项目
-  initializeProject: async (type, content, templateImage) => {
+  initializeProject: async (type, content, templateImage, templateStyle) => {
     set({ isGlobalLoading: true, error: null });
     try {
       const request: any = {};
@@ -113,6 +113,11 @@ const debouncedUpdatePage = debounce(
         request.outline_text = content;
       } else if (type === 'description') {
         request.description_text = content;
+      }
+      
+      // 添加风格描述（如果有）
+      if (templateStyle && templateStyle.trim()) {
+        request.template_style = templateStyle.trim();
       }
       
       // 1. 创建项目
