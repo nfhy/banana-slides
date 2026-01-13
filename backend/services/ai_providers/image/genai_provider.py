@@ -6,6 +6,7 @@ Supports two modes:
 - Vertex AI: Uses GCP service account authentication
 """
 import logging
+import os
 from typing import Optional, List
 from google import genai
 from google.genai import types
@@ -57,6 +58,14 @@ class GenAIImageProvider(ImageProvider):
                 base_url=api_base,
                 timeout=timeout_ms
             ) if api_base else types.HttpOptions(timeout=timeout_ms)
+
+            # 支持通过环境变量设置代理：优先使用 GENAI_PROXY，其次 HTTPS_PROXY/HTTP_PROXY
+            proxy = os.getenv('GENAI_PROXY') or os.getenv('HTTPS_PROXY') or os.getenv('HTTP_PROXY')
+            if proxy:
+                logger.info(f"Using proxy for GenAI client: {proxy}")
+                # 设置到进程环境，底层 http 客户端（requests / google genai SDK）会使用这些变量
+                os.environ.setdefault('HTTP_PROXY', proxy)
+                os.environ.setdefault('HTTPS_PROXY', proxy)
 
             self.client = genai.Client(
                 http_options=http_options,

@@ -140,6 +140,26 @@ def create_service_config(
         elif inpaint_method == 'baidu':
             provider = InpaintProviderFactory.create_baidu_inpaint_provider()
             if provider:
+                # 为了避免短时间内频繁调用百度API，给底层请求增加固定间隔
+                try:
+                    # provider 是 InpaintProviders.BaiduInpaintProvider，内部持有 _provider
+                    # (backend.services.ai_providers.image.BaiduInpaintingProvider)，
+                    # 我们在其 `inpaint` 调用前加入 5 秒的 sleep
+                    baidu_low_level = getattr(provider, '_provider', None)
+                    if baidu_low_level and hasattr(baidu_low_level, 'inpaint'):
+                        import time
+
+                        orig_inpaint = baidu_low_level.inpaint
+
+                        def _delayed_inpaint(image, rectangles):
+                            time.sleep(5)
+                            return orig_inpaint(image, rectangles)
+
+                        baidu_low_level.inpaint = _delayed_inpaint
+                        logger.info("已为百度 inpaint 调用增加 5s 间隔")
+                except Exception as e:
+                    logger.warning(f"无法为百度 inpaint 增加延时：{e}")
+
                 inpaint_registry.register_default(provider)
                 logger.info("使用百度图像修复方法")
             else:

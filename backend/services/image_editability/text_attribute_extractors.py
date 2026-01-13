@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Tuple, Union
 from PIL import Image
 from services.prompts import get_text_attribute_extraction_prompt
+from tenacity import RetryError
 
 logger = logging.getLogger(__name__)
 
@@ -321,15 +322,32 @@ class CaptionModelTextAttributeExtractor(TextAttributeExtractor):
                 thinking_budget=thinking_budget
             )
             return result if isinstance(result, dict) else {}
-        
+
         except ValueError as e:
             # text_provider 不支持图片输入
             logger.warning(f"text_provider不支持图片输入: {e}")
             return {}
-        
+
+        except RetryError as e:
+            # tenacity 抛出的重试耗尽错误 - 尝试提取底层异常并记录完整堆栈
+            inner_exc = None
+            try:
+                # tenacity.RetryError 提供 last_attempt 属性
+                inner_attempt = getattr(e, 'last_attempt', None)
+                if inner_attempt is not None:
+                    inner_exc = inner_attempt.exception()
+            except Exception:
+                inner_exc = None
+
+            inner_msg = str(inner_exc) if inner_exc else str(e)
+            logger.exception(f"生成JSON失败（重试耗尽）: {inner_msg}")
+
+            # 抛出包含底层异常信息的新异常，以便上层任务（Task）捕获并写入任务日志
+            raise Exception(f"生成JSON失败（重试耗尽）: {inner_msg}") from e
+
         except Exception as e:
-            # JSON 解析失败（重试3次后仍失败）
-            logger.error(f"生成JSON失败（已重试3次）: {e}")
+            # 其他异常，记录完整堆栈并返回空结果以降级
+            logger.exception(f"生成JSON失败（已重试3次）: {e}")
             return {}
         
         finally:

@@ -12,8 +12,17 @@ from typing import Dict, List, Any, Optional, Tuple
 from PIL import Image
 import io
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import time
+import threading
+import os
 
 logger = logging.getLogger(__name__)
+
+# Simple in-process rate limiter to avoid QPS limit exceeded errors
+# Use environment variable BAIDU_API_MIN_INTERVAL to configure minimal interval between requests (seconds)
+_BAIDU_MIN_INTERVAL = float(os.getenv('BAIDU_API_MIN_INTERVAL', '1.0'))
+_baidu_lock = threading.Lock()
+_baidu_last_request_time = 0.0
 
 
 class BaiduInpaintingProvider:
@@ -46,11 +55,11 @@ class BaiduInpaintingProvider:
             logger.info("✅ 初始化百度图像修复 Provider (使用Access Token)")
     
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=0.5, min=1, max=5),
-        retry=retry_if_exception_type((requests.exceptions.RequestException, Exception)),
-        reraise=True
-    )
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=1, min=2, max=20),
+            retry=retry_if_exception_type((requests.exceptions.RequestException, Exception)),
+            reraise=True
+        )
     def inpaint(
         self,
         image: Image.Image,
@@ -143,22 +152,38 @@ class BaiduInpaintingProvider:
                 'rectangle': valid_rectangles
             }
             
+            # Throttle requests within this process to reduce QPS errors
+            global _baidu_last_request_time
+            with _baidu_lock:
+                now = time.time()
+                wait = _BAIDU_MIN_INTERVAL - (now - _baidu_last_request_time)
+                if wait > 0:
+                    logger.debug(f"Baidu inpaint throttling: sleeping {wait:.2f}s to respect min interval")
+                    time.sleep(wait)
+                # mark the time just before sending request
+                _baidu_last_request_time = time.time()
+
             logger.info("🌐 发送请求到百度图像修复API...")
             response = requests.post(
-                url, 
-                headers=headers, 
-                json=request_body, 
+                url,
+                headers=headers,
+                json=request_body,
                 timeout=60
             )
             response.raise_for_status()
             
             result = response.json()
             
-            # 检查错误 - 抛出异常以触发 @retry 装饰器
+            # 检查错误 - 对 QPS 限流 (error_code == 18) 做短等待再重试
             if 'error_code' in result:
                 error_msg = result.get('error_msg', 'Unknown error')
                 error_code = result.get('error_code')
                 logger.error(f"❌ 百度API错误: [{error_code}] {error_msg}")
+                if int(error_code) == 18:
+                    # QPS limit reached - wait longer before retrying
+                    retry_sleep = 5
+                    logger.warning(f"Baidu QPS limit reached, sleeping {retry_sleep}s before retrying")
+                    time.sleep(retry_sleep)
                 raise Exception(f"Baidu API error [{error_code}]: {error_msg}")
             
             # 解析结果
